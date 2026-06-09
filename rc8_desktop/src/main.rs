@@ -1,3 +1,4 @@
+use rc8_core::Chip8;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -14,6 +15,7 @@ const WINDOW_HEIGHT: u32 = (SCREEN_HEIGHT as u32) * SCALE;
 
 
 fn main() {
+    let mut chip8 = Chip8::new();
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
@@ -43,22 +45,18 @@ fn main() {
             }
         }
 
-        draw_screen(&mut canvas);
+        draw_screen(&chip8, &mut canvas);
     }
+
 }
 
 
-fn draw_screen(canvas: &mut Canvas<Window>) {
+fn draw_screen(chip8: &Chip8, canvas: &mut Canvas<Window>) {
     canvas.set_draw_color(Color::RGB(0, 0, 0));
     canvas.clear();
 
-    // Set some random pixel to black for testing
-    let mut test_frame_buf: [bool; SCREEN_WIDTH * SCREEN_HEIGHT] = [true; SCREEN_WIDTH * SCREEN_HEIGHT];
-    test_frame_buf[rand::random_range(0..SCREEN_WIDTH * SCREEN_HEIGHT)] = false;
-
-    let screen = test_frame_buf;
     canvas.set_draw_color(Color::RGB(255, 255, 255));
-    for (i, pixel) in screen.iter().enumerate() {
+    for (i, pixel) in chip8.screen.iter().enumerate() {
         // Don't do anything if it's black
         if !*pixel {
             continue;

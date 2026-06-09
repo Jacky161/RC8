@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 sdl2 = "0.38.0"
 rand = "0.10.1"
+rc8_core = { path = "../rc8_core" }
