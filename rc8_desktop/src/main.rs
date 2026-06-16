@@ -46,6 +46,7 @@ fn main() {
         }
 
         draw_screen(&chip8, &mut canvas);
+        chip8.tick();
     }
 
 }
