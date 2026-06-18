@@ -72,19 +72,17 @@ impl Chip8 {
         self.pc = self.stack_pop();
     }
 
-    // JUMP
+    // JMP
     fn OP_1NNN(&mut self, instr: u16) {
         self.pc = instr & 0x0FFF;
     }
 
-    // CALL
+    // JAL
     fn OP_2NNN(&mut self, instr: u16) {
         // Save current PC to the stack before going there
         self.stack_push(self.pc);
         self.OP_1NNN(instr);
     }
-
-    // Instructions for making decisions
 
     // SEQI
     fn OP_3XNN(&mut self, instr: u16) {
@@ -118,8 +116,6 @@ impl Chip8 {
             self.pc += 2;
         }
     }
-
-    // Arithmetic Instructions
 
     // LI
     fn OP_6XNN(&mut self, instr: u16) {
@@ -202,6 +198,73 @@ impl Chip8 {
         self.v_reg[0xF] = if overflow { 1 } else { 0 };
     }
 
+    // SRL
+    // NOTE: Differing implementations based on reference.
+    fn OP_8XY6(&mut self, instr: u16) {
+        // VX = VY >> 1
+        // VF = LSB of VY
+        let reg_x = ((instr & 0x0F00) >> 16) as usize;
+        let reg_y = ((instr & 0x00F0) >> 8) as usize;
+
+        self.v_reg[reg_x] = self.v_reg[reg_y] >> 1;
+        self.v_reg[0xF] = self.v_reg[reg_y] & 1;
+    }
+
+    // SUB2
+    fn OP_8XY7(&mut self, instr: u16) {
+        // VX = VY - VX
+        // VF set to 1 on overflow
+        let reg_x = ((instr & 0x0F00) >> 16) as usize;
+        let reg_y = ((instr & 0x00F0) >> 8) as usize;
+
+        let (result, overflow) = self.v_reg[reg_y].overflowing_sub(self.v_reg[reg_x]);
+
+        self.v_reg[reg_x] = result;
+        self.v_reg[0xF] = if overflow { 1 } else { 0 };
+    }
+
+    // SLL
+    // NOTE: Differing implementations based on reference.
+    fn OP_8XYE(&mut self, instr: u16) {
+        // VX = VY << 1
+        // VF = LSB of VY
+        let reg_x = ((instr & 0x0F00) >> 16) as usize;
+        let reg_y = ((instr & 0x00F0) >> 8) as usize;
+
+        self.v_reg[reg_x] = self.v_reg[reg_y] << 1;
+        self.v_reg[0xF] = self.v_reg[reg_y] & 0x8;
+    }
+
+    // SNE
+    fn OP_9XY0(&mut self, instr: u16) {
+        // Skip following instruction if VX != VY
+        let reg_x = ((instr & 0x0F00) >> 16) as usize;
+        let reg_y = ((instr & 0x00F0) >> 8) as usize;
+
+        if self.v_reg[reg_x] != self.v_reg[reg_y] {
+            self.pc += 2;
+        }
+    }
+
+    // SMI
+    fn OP_ANNN(&mut self, instr: u16) {
+        // Store NNN into i_reg
+        self.i_reg = instr & 0x0FFF;
+    }
+
+    // LJMP
+    fn OP_BNNN(&mut self, instr: u16) {
+        self.pc = (instr & 0x0FFF) + self.v_reg[0] as u16;
+    }
+
+    // SRND
+    fn OP_CXNN(&mut self, instr: u16) {
+        // reg_x = random number & 0xNN
+        let reg_x = ((instr & 0x0F00) >> 16) as usize;
+        let random: u8 = rand::random();
+        self.v_reg[reg_x] = random & ((instr & 0x00FF) as u8);
+    }
+
     // Instruction Handling
     fn fetch(&mut self) -> u16 {
         // Chip-8 is a big-endian machine
@@ -236,6 +299,13 @@ impl Chip8 {
             (0x8, _, _, 0x3) => self.OP_8XY3(instr),
             (0x8, _, _, 0x4) => self.OP_8XY4(instr),
             (0x8, _, _, 0x5) => self.OP_8XY5(instr),
+            (0x8, _, _, 0x6) => self.OP_8XY6(instr),
+            (0x8, _, _, 0x7) => self.OP_8XY7(instr),
+            (0x8, _, _, 0xE) => self.OP_8XYE(instr),
+            (0x9, _, _, 0) => self.OP_9XY0(instr),
+            (0xA, _, _, _) => self.OP_ANNN(instr),
+            (0xB, _, _, _) => self.OP_BNNN(instr),
+            (0xC, _, _, _) => self.OP_CXNN(instr),
             _ => unimplemented!("Unimplemented opcode: {instr}"),
         }
     }
