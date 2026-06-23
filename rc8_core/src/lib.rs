@@ -265,6 +265,52 @@ impl Chip8 {
         self.v_reg[reg_x] = random & ((instr & 0x00FF) as u8);
     }
 
+    // DSPR
+    fn OP_DXYN(&mut self, instr: u16) {
+        // TODO
+    }
+
+    // SKP
+    fn OP_EX9E(&mut self, instr: u16) {
+        // Skip next instr if the key in VX is pressed
+        let reg_x = ((instr & 0x0F00) >> 16) as usize;
+        let key_code = self.v_reg[reg_x] as usize;
+        if self.keys.get(key_code).is_some_and(|x| *x) {
+            self.pc += 2;
+        }
+    }
+
+    // SKNP
+    fn OP_EXA1(&mut self, instr: u16) {
+        // Skip next instr if the key in VX is not pressed
+        let reg_x = ((instr & 0x0F00) >> 16) as usize;
+        let key_code = self.v_reg[reg_x] as usize;
+        if self.keys.get(key_code).is_some_and(|x| !*x) {
+            self.pc += 2;
+        }
+    }
+
+    // SDT
+    fn OP_FX07(&mut self, instr: u16) {
+        // Store current delay timer value in VX
+        let reg_x = ((instr & 0x0F00) >> 16) as usize;
+        self.v_reg[reg_x] = self.dt;
+    }
+
+    // WKP
+    fn OP_FX0A(&mut self, instr: u16) {
+        // Wait for a keypress and store into VX
+        let pressed_key = self.keys.iter().position(|x| *x);
+
+        if pressed_key.is_some() {
+            let reg_x = ((instr & 0x0F00) >> 16) as usize;
+            self.v_reg[reg_x] = pressed_key.unwrap() as u8;
+        } else {
+            // Keep blocking until a key is pressed
+            self.pc -= 2;
+        }
+    }
+
     // Instruction Handling
     fn fetch(&mut self) -> u16 {
         // Chip-8 is a big-endian machine
@@ -283,17 +329,17 @@ impl Chip8 {
         let fourth = instr & 0x000F;
 
         match (first, second, third, fourth) {
-            (0, 0, 0, 0) => return,
-            (0, 0, 0xE, 0) => self.OP_00E0(),
-            (0, 0, 0xE, 0xE) => self.OP_00EE(),
+            (0x0, 0x0, 0x0, 0x0) => return,
+            (0x0, 0x0, 0xE, 0x0) => self.OP_00E0(),
+            (0x0, 0x0, 0xE, 0xE) => self.OP_00EE(),
             (0x1, _, _, _) => self.OP_1NNN(instr),
             (0x2, _, _, _) => self.OP_2NNN(instr),
             (0x3, _, _, _) => self.OP_3XNN(instr),
             (0x4, _, _, _) => self.OP_4XNN(instr),
-            (0x5, _, _, 0) => self.OP_5XY0(instr),
+            (0x5, _, _, 0x0) => self.OP_5XY0(instr),
             (0x6, _, _, _) => self.OP_6XNN(instr),
             (0x7, _, _, _) => self.OP_7XNN(instr),
-            (0x8, _, _, 0) => self.OP_8XY0(instr),
+            (0x8, _, _, 0x0) => self.OP_8XY0(instr),
             (0x8, _, _, 0x1) => self.OP_8XY1(instr),
             (0x8, _, _, 0x2) => self.OP_8XY2(instr),
             (0x8, _, _, 0x3) => self.OP_8XY3(instr),
@@ -306,6 +352,11 @@ impl Chip8 {
             (0xA, _, _, _) => self.OP_ANNN(instr),
             (0xB, _, _, _) => self.OP_BNNN(instr),
             (0xC, _, _, _) => self.OP_CXNN(instr),
+            (0xD, _, _, _) => self.OP_DXYN(instr),
+            (0xE, _, 0x9, 0xE) => self.OP_EX9E(instr),
+            (0xE, _, 0xA, 0x1) => self.OP_EXA1(instr),
+            (0xF, _, 0x0, 0x7) => self.OP_FX07(instr),
+            (0xF, _, 0x0, 0xA) => self.OP_FX0A(instr),
             _ => unimplemented!("Unimplemented opcode: {instr}"),
         }
     }
