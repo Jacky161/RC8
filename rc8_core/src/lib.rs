@@ -1,3 +1,5 @@
+use std::u8;
+
 // Real screen width and height in pixels
 pub const SCREEN_WIDTH: usize = 64;
 pub const SCREEN_HEIGHT: usize = 32;
@@ -8,6 +10,49 @@ const STACK_SIZE: usize = 16;
 const NUM_REGS: usize = 16;
 const NUM_KEYS: usize = 16;
 const PC_START_ADDR: u16 = 0x200;
+
+#[derive(Debug)]
+struct Chip8Instr {
+    bits: u16,
+}
+
+impl Chip8Instr {
+    fn first(&self) -> u16 {
+        (self.bits & 0xF000) >> 12
+    }
+
+    fn second(&self) -> u16 {
+        (self.bits & 0x0F00) >> 8
+    }
+
+    fn third(&self) -> u16 {
+        (self.bits & 0x00F0) >> 4
+    }
+
+    fn fourth(&self) -> u16 {
+        self.bits & 0x000F
+    }
+
+    fn nn(&self) -> u8 {
+        // nn = last 2 hex chars
+        (self.bits & 0x00FF) as u8
+    }
+
+    fn nnn(&self) -> u16 {
+        // nnn = last 3 hex chars
+        self.bits & 0x0FFF
+    }
+
+    fn reg_x(&self) -> usize {
+        // reg_x = 2nd hex char
+        self.second() as usize
+    }
+
+    fn reg_y(&self) -> usize {
+        // reg_y = 3rd hex char
+        self.third() as usize
+    }
+}
 
 pub struct Chip8 {
     // Each pixel can either be on/true (white) or off/false (black)
@@ -63,248 +108,199 @@ impl Chip8 {
     // Instructions
 
     // CLS
-    fn OP_00E0(&mut self) {
+    fn op_00e0(&mut self, _instr: Chip8Instr) {
         self.screen.fill(false);
     }
 
     // RET
-    fn OP_00EE(&mut self) {
+    fn op_00ee(&mut self, _instr: Chip8Instr) {
         self.pc = self.stack_pop();
     }
 
     // JMP
-    fn OP_1NNN(&mut self, instr: u16) {
-        self.pc = instr & 0x0FFF;
+    fn op_1nnn(&mut self, instr: Chip8Instr) {
+        self.pc = instr.nnn() & 0x0FFF;
     }
 
     // JAL
-    fn OP_2NNN(&mut self, instr: u16) {
+    fn op_2nnn(&mut self, instr: Chip8Instr) {
         // Save current PC to the stack before going there
         self.stack_push(self.pc);
-        self.OP_1NNN(instr);
+        self.op_1nnn(instr);
     }
 
     // SEQI
-    fn OP_3XNN(&mut self, instr: u16) {
+    fn op_3xnn(&mut self, instr: Chip8Instr) {
         // Skip following instruction if VX == NN
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let nn = (instr & 0x00FF) as u8;
-
-        if self.v_reg[reg_x] == nn {
+        if self.v_reg[instr.reg_x()] == instr.nn() {
             self.pc += 2;
         }
     }
 
     // SNEI
-    fn OP_4XNN(&mut self, instr: u16) {
+    fn op_4xnn(&mut self, instr: Chip8Instr) {
         // Skip following instruction if VX != NN
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let nn = (instr & 0x00FF) as u8;
-
-        if self.v_reg[reg_x] != nn {
+        if self.v_reg[instr.reg_x()] != instr.nn() {
             self.pc += 2;
         }
     }
 
     // SEQ
-    fn OP_5XY0(&mut self, instr: u16) {
+    fn op_5xy0(&mut self, instr: Chip8Instr) {
         // Skip following instruction if VX == VY
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
-
-        if self.v_reg[reg_x] == self.v_reg[reg_y] {
+        if self.v_reg[instr.reg_x()] == self.v_reg[instr.reg_y()] {
             self.pc += 2;
         }
     }
 
     // LI
-    fn OP_6XNN(&mut self, instr: u16) {
+    fn op_6xnn(&mut self, instr: Chip8Instr) {
         // Load NN into VX
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let nn = (instr & 0x00FF) as u8;
-
-        self.v_reg[reg_x] = nn;
+        self.v_reg[instr.reg_x()] = instr.nn();
     }
 
     // ADDI
-    fn OP_7XNN(&mut self, instr: u16) {
+    fn op_7xnn(&mut self, instr: Chip8Instr) {
         // Add NN to VX
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let nn = (instr & 0x00FF) as u8;
-
         // Wrapping add to avoid panic on overflow
-        self.v_reg[reg_x] = self.v_reg[reg_x].wrapping_add(nn);
+        self.v_reg[instr.reg_x()] = self.v_reg[instr.reg_x()].wrapping_add(instr.nn());
     }
 
     // MV
-    fn OP_8XY0(&mut self, instr: u16) {
+    fn op_8xy0(&mut self, instr: Chip8Instr) {
         // Copy register VY into VX
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
-
-        self.v_reg[reg_x] = self.v_reg[reg_y];
+        self.v_reg[instr.reg_x()] = self.v_reg[instr.reg_y()];
     }
 
     // SEOR
-    fn OP_8XY1(&mut self, instr: u16) {
+    fn op_8xy1(&mut self, instr: Chip8Instr) {
         // Set VX to VX | VY
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
-
-        self.v_reg[reg_x] |= self.v_reg[reg_y];
+        self.v_reg[instr.reg_x()] |= self.v_reg[instr.reg_y()];
     }
 
     // SEAND
-    fn OP_8XY2(&mut self, instr: u16) {
+    fn op_8xy2(&mut self, instr: Chip8Instr) {
         // Set VX to VX & VY
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
-
-        self.v_reg[reg_x] &= self.v_reg[reg_y];
+        self.v_reg[instr.reg_x()] &= self.v_reg[instr.reg_y()];
     }
 
     // SEXOR
-    fn OP_8XY3(&mut self, instr: u16) {
+    fn op_8xy3(&mut self, instr: Chip8Instr) {
         // Set VX to VX ^ VY
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
-
-        self.v_reg[reg_x] ^= self.v_reg[reg_y];
+        self.v_reg[instr.reg_x()] ^= self.v_reg[instr.reg_y()];
     }
 
     // ADD
-    fn OP_8XY4(&mut self, instr: u16) {
+    fn op_8xy4(&mut self, instr: Chip8Instr) {
         // VX = VX + VY
         // VF set to 1 on overflow
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
+        let (result, overflow) = self.v_reg[instr.reg_x()].overflowing_add(self.v_reg[instr.reg_y()]);
 
-        let (result, overflow) = self.v_reg[reg_x].overflowing_add(self.v_reg[reg_y]);
-
-        self.v_reg[reg_x] = result;
+        self.v_reg[instr.reg_x()] = result;
         self.v_reg[0xF] = if overflow { 1 } else { 0 };
     }
 
     // SUB
-    fn OP_8XY5(&mut self, instr: u16) {
+    fn op_8xy5(&mut self, instr: Chip8Instr) {
         // VX = VX - VY
         // VF set to 1 on overflow
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
+        let (result, overflow) = self.v_reg[instr.reg_x()].overflowing_sub(self.v_reg[instr.reg_y()]);
 
-        let (result, overflow) = self.v_reg[reg_x].overflowing_sub(self.v_reg[reg_y]);
-
-        self.v_reg[reg_x] = result;
+        self.v_reg[instr.reg_x()] = result;
         self.v_reg[0xF] = if overflow { 1 } else { 0 };
     }
 
     // SRL
     // NOTE: Differing implementations based on reference.
-    fn OP_8XY6(&mut self, instr: u16) {
+    fn op_8xy6(&mut self, instr: Chip8Instr) {
         // VX = VY >> 1
         // VF = LSB of VY
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
-
-        self.v_reg[reg_x] = self.v_reg[reg_y] >> 1;
-        self.v_reg[0xF] = self.v_reg[reg_y] & 1;
+        self.v_reg[instr.reg_x()] = self.v_reg[instr.reg_y()] >> 1;
+        self.v_reg[0xF] = self.v_reg[instr.reg_y()] & 1;
     }
 
     // SUB2
-    fn OP_8XY7(&mut self, instr: u16) {
+    fn op_8xy7(&mut self, instr: Chip8Instr) {
         // VX = VY - VX
         // VF set to 1 on overflow
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
+        let (result, overflow) = self.v_reg[instr.reg_y()].overflowing_sub(self.v_reg[instr.reg_x()]);
 
-        let (result, overflow) = self.v_reg[reg_y].overflowing_sub(self.v_reg[reg_x]);
-
-        self.v_reg[reg_x] = result;
+        self.v_reg[instr.reg_x()] = result;
         self.v_reg[0xF] = if overflow { 1 } else { 0 };
     }
 
     // SLL
     // NOTE: Differing implementations based on reference.
-    fn OP_8XYE(&mut self, instr: u16) {
+    fn op_8xye(&mut self, instr: Chip8Instr) {
         // VX = VY << 1
         // VF = LSB of VY
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
-
-        self.v_reg[reg_x] = self.v_reg[reg_y] << 1;
-        self.v_reg[0xF] = self.v_reg[reg_y] & 0x8;
+        self.v_reg[instr.reg_x()] = self.v_reg[instr.reg_y()] << 1;
+        self.v_reg[0xF] = self.v_reg[instr.reg_y()] & 0x8;
     }
 
     // SNE
-    fn OP_9XY0(&mut self, instr: u16) {
+    fn op_9xy0(&mut self, instr: Chip8Instr) {
         // Skip following instruction if VX != VY
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let reg_y = ((instr & 0x00F0) >> 8) as usize;
-
-        if self.v_reg[reg_x] != self.v_reg[reg_y] {
+        if self.v_reg[instr.reg_x()] != self.v_reg[instr.reg_y()] {
             self.pc += 2;
         }
     }
 
     // SMI
-    fn OP_ANNN(&mut self, instr: u16) {
+    fn op_annn(&mut self, instr: Chip8Instr) {
         // Store NNN into i_reg
-        self.i_reg = instr & 0x0FFF;
+        self.i_reg = instr.nnn();
     }
 
     // LJMP
-    fn OP_BNNN(&mut self, instr: u16) {
-        self.pc = (instr & 0x0FFF) + self.v_reg[0] as u16;
+    fn op_bnnn(&mut self, instr: Chip8Instr) {
+        // PC = NNN + V0
+        self.pc = instr.nnn() + self.v_reg[0] as u16;
     }
 
     // SRND
-    fn OP_CXNN(&mut self, instr: u16) {
+    fn op_cxnn(&mut self, instr: Chip8Instr) {
         // reg_x = random number & 0xNN
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
         let random: u8 = rand::random();
-        self.v_reg[reg_x] = random & ((instr & 0x00FF) as u8);
+        self.v_reg[instr.reg_x()] = random & instr.nn();
     }
 
     // DSPR
-    fn OP_DXYN(&mut self, instr: u16) {
+    fn op_dxyn(&mut self, instr: Chip8Instr) {
         // TODO
     }
 
     // SKP
-    fn OP_EX9E(&mut self, instr: u16) {
+    fn op_ex9e(&mut self, instr: Chip8Instr) {
         // Skip next instr if the key in VX is pressed
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let key_code = self.v_reg[reg_x] as usize;
+        let key_code = self.v_reg[instr.reg_x()] as usize;
         if self.keys.get(key_code).is_some_and(|x| *x) {
             self.pc += 2;
         }
     }
 
     // SKNP
-    fn OP_EXA1(&mut self, instr: u16) {
+    fn op_exa1(&mut self, instr: Chip8Instr) {
         // Skip next instr if the key in VX is not pressed
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        let key_code = self.v_reg[reg_x] as usize;
+        let key_code = self.v_reg[instr.reg_x()] as usize;
         if self.keys.get(key_code).is_some_and(|x| !*x) {
             self.pc += 2;
         }
     }
 
     // SDT
-    fn OP_FX07(&mut self, instr: u16) {
+    fn op_fx07(&mut self, instr: Chip8Instr) {
         // Store current delay timer value in VX
-        let reg_x = ((instr & 0x0F00) >> 16) as usize;
-        self.v_reg[reg_x] = self.dt;
+        self.v_reg[instr.reg_x()] = self.dt;
     }
 
     // WKP
-    fn OP_FX0A(&mut self, instr: u16) {
+    fn op_fx0a(&mut self, instr: Chip8Instr) {
         // Wait for a keypress and store into VX
         let pressed_key = self.keys.iter().position(|x| *x);
 
         if pressed_key.is_some() {
-            let reg_x = ((instr & 0x0F00) >> 16) as usize;
-            self.v_reg[reg_x] = pressed_key.unwrap() as u8;
+            self.v_reg[instr.reg_x()] = pressed_key.unwrap() as u8;
         } else {
             // Keep blocking until a key is pressed
             self.pc -= 2;
@@ -312,52 +308,46 @@ impl Chip8 {
     }
 
     // Instruction Handling
-    fn fetch(&mut self) -> u16 {
+    fn fetch(&mut self) -> Chip8Instr {
         // Chip-8 is a big-endian machine
         // Retrieve the byte at pc and pc+1 into the u16
         let instr =
             ((self.ram[self.pc as usize] as u16) << 8) | (self.ram[self.pc as usize + 1] as u16);
         self.pc += 2;
-        instr
+        Chip8Instr { bits: instr }
     }
 
-    fn execute(&mut self, instr: u16) {
-        // Separate each hex digit
-        let first = (instr & 0xF000) >> 12;
-        let second = (instr & 0x0F00) >> 8;
-        let third = (instr & 0x00F0) >> 4;
-        let fourth = instr & 0x000F;
-
-        match (first, second, third, fourth) {
+    fn execute(&mut self, instr: Chip8Instr) {
+        match (instr.first(), instr.second(), instr.third(), instr.fourth()) {
             (0x0, 0x0, 0x0, 0x0) => return,
-            (0x0, 0x0, 0xE, 0x0) => self.OP_00E0(),
-            (0x0, 0x0, 0xE, 0xE) => self.OP_00EE(),
-            (0x1, _, _, _) => self.OP_1NNN(instr),
-            (0x2, _, _, _) => self.OP_2NNN(instr),
-            (0x3, _, _, _) => self.OP_3XNN(instr),
-            (0x4, _, _, _) => self.OP_4XNN(instr),
-            (0x5, _, _, 0x0) => self.OP_5XY0(instr),
-            (0x6, _, _, _) => self.OP_6XNN(instr),
-            (0x7, _, _, _) => self.OP_7XNN(instr),
-            (0x8, _, _, 0x0) => self.OP_8XY0(instr),
-            (0x8, _, _, 0x1) => self.OP_8XY1(instr),
-            (0x8, _, _, 0x2) => self.OP_8XY2(instr),
-            (0x8, _, _, 0x3) => self.OP_8XY3(instr),
-            (0x8, _, _, 0x4) => self.OP_8XY4(instr),
-            (0x8, _, _, 0x5) => self.OP_8XY5(instr),
-            (0x8, _, _, 0x6) => self.OP_8XY6(instr),
-            (0x8, _, _, 0x7) => self.OP_8XY7(instr),
-            (0x8, _, _, 0xE) => self.OP_8XYE(instr),
-            (0x9, _, _, 0) => self.OP_9XY0(instr),
-            (0xA, _, _, _) => self.OP_ANNN(instr),
-            (0xB, _, _, _) => self.OP_BNNN(instr),
-            (0xC, _, _, _) => self.OP_CXNN(instr),
-            (0xD, _, _, _) => self.OP_DXYN(instr),
-            (0xE, _, 0x9, 0xE) => self.OP_EX9E(instr),
-            (0xE, _, 0xA, 0x1) => self.OP_EXA1(instr),
-            (0xF, _, 0x0, 0x7) => self.OP_FX07(instr),
-            (0xF, _, 0x0, 0xA) => self.OP_FX0A(instr),
-            _ => unimplemented!("Unimplemented opcode: {instr}"),
+            (0x0, 0x0, 0xE, 0x0) => self.op_00e0(instr),
+            (0x0, 0x0, 0xE, 0xE) => self.op_00ee(instr),
+            (0x1, _, _, _) => self.op_1nnn(instr),
+            (0x2, _, _, _) => self.op_2nnn(instr),
+            (0x3, _, _, _) => self.op_3xnn(instr),
+            (0x4, _, _, _) => self.op_4xnn(instr),
+            (0x5, _, _, 0x0) => self.op_5xy0(instr),
+            (0x6, _, _, _) => self.op_6xnn(instr),
+            (0x7, _, _, _) => self.op_7xnn(instr),
+            (0x8, _, _, 0x0) => self.op_8xy0(instr),
+            (0x8, _, _, 0x1) => self.op_8xy1(instr),
+            (0x8, _, _, 0x2) => self.op_8xy2(instr),
+            (0x8, _, _, 0x3) => self.op_8xy3(instr),
+            (0x8, _, _, 0x4) => self.op_8xy4(instr),
+            (0x8, _, _, 0x5) => self.op_8xy5(instr),
+            (0x8, _, _, 0x6) => self.op_8xy6(instr),
+            (0x8, _, _, 0x7) => self.op_8xy7(instr),
+            (0x8, _, _, 0xE) => self.op_8xye(instr),
+            (0x9, _, _, 0) => self.op_9xy0(instr),
+            (0xA, _, _, _) => self.op_annn(instr),
+            (0xB, _, _, _) => self.op_bnnn(instr),
+            (0xC, _, _, _) => self.op_cxnn(instr),
+            (0xD, _, _, _) => self.op_dxyn(instr),
+            (0xE, _, 0x9, 0xE) => self.op_ex9e(instr),
+            (0xE, _, 0xA, 0x1) => self.op_exa1(instr),
+            (0xF, _, 0x0, 0x7) => self.op_fx07(instr),
+            (0xF, _, 0x0, 0xA) => self.op_fx0a(instr),
+            _ => unimplemented!("Unimplemented opcode: {:?}", instr),
         }
     }
 
