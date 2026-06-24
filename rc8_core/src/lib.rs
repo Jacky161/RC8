@@ -1,5 +1,3 @@
-use std::u8;
-
 // Real screen width and height in pixels
 pub const SCREEN_WIDTH: usize = 64;
 pub const SCREEN_HEIGHT: usize = 32;
@@ -307,6 +305,54 @@ impl Chip8 {
         }
     }
 
+    // STDT
+    fn op_fx15(&mut self, instr: Chip8Instr) {
+        // Set delay timer to VX
+        self.dt = self.v_reg[instr.reg_x()];
+    }
+
+    // STST
+    fn op_fx18(&mut self, instr: Chip8Instr) {
+        // Set sound timer to VX
+        self.st = self.v_reg[instr.reg_x()];
+    }
+
+    // ADDX
+    fn op_fx1e(&mut self, instr: Chip8Instr) {
+        // i_reg += VX
+        (self.i_reg, _) = self.i_reg.overflowing_add(self.v_reg[instr.reg_x()] as u16);
+    }
+
+    fn op_fx29(&mut self, instr: Chip8Instr) {
+        // TODO
+    }
+
+    fn op_fx33(&mut self, instr: Chip8Instr) {
+        // Store BCD representation of VX. Hundreds goes into I, tens into I+1, ones into I+2
+        let mut value = self.v_reg[instr.reg_x()];
+
+        for i in (0..=2).rev() {
+            self.ram[(self.i_reg + i) as usize] = value % 10;
+            value /= 10;
+        }
+    }
+
+    fn op_fx55(&mut self, instr: Chip8Instr) {
+        // Write registers V0-VX into memory from I-I+X
+        for i in 0..=instr.reg_x() {
+            self.ram[self.i_reg as usize] = self.v_reg[i];
+            self.i_reg += 1;
+        }
+    }
+
+    fn op_fx65(&mut self, instr: Chip8Instr) {
+        // Read registers V0-VX from memory at I-I+X
+        for i in 0..=instr.reg_x() {
+            self.v_reg[i] = self.ram[self.i_reg as usize];
+            self.i_reg += 1;
+        }
+    }
+
     // Instruction Handling
     fn fetch(&mut self) -> Chip8Instr {
         // Chip-8 is a big-endian machine
@@ -347,6 +393,13 @@ impl Chip8 {
             (0xE, _, 0xA, 0x1) => self.op_exa1(instr),
             (0xF, _, 0x0, 0x7) => self.op_fx07(instr),
             (0xF, _, 0x0, 0xA) => self.op_fx0a(instr),
+            (0xF, _, 0x1, 0x5) => self.op_fx15(instr),
+            (0xF, _, 0x1, 0x8) => self.op_fx18(instr),
+            (0xF, _, 0x1, 0xE) => self.op_fx1e(instr),
+            (0xF, _, 0x2, 0x9) => self.op_fx29(instr),
+            (0xF, _, 0x3, 0x3) => self.op_fx33(instr),
+            (0xF, _, 0x5, 0x5) => self.op_fx55(instr),
+            (0xF, _, 0x6, 0x5) => self.op_fx65(instr),
             _ => unimplemented!("Unimplemented opcode: {:?}", instr),
         }
     }
