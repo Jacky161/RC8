@@ -1,56 +1,9 @@
-// Real screen width and height in pixels
-pub const SCREEN_WIDTH: usize = 64;
-pub const SCREEN_HEIGHT: usize = 32;
+mod chip8_const;
+mod chip8_font;
+mod chip8_instr;
 
-// Size is in bytes
-const RAM_SIZE: usize = 4096;
-const STACK_SIZE: usize = 16;
-const NUM_REGS: usize = 16;
-const NUM_KEYS: usize = 16;
-const PC_START_ADDR: u16 = 0x200;
-
-#[derive(Debug)]
-struct Chip8Instr {
-    bits: u16,
-}
-
-impl Chip8Instr {
-    fn first(&self) -> u16 {
-        (self.bits & 0xF000) >> 12
-    }
-
-    fn second(&self) -> u16 {
-        (self.bits & 0x0F00) >> 8
-    }
-
-    fn third(&self) -> u16 {
-        (self.bits & 0x00F0) >> 4
-    }
-
-    fn fourth(&self) -> u16 {
-        self.bits & 0x000F
-    }
-
-    fn nn(&self) -> u8 {
-        // nn = last 2 hex chars
-        (self.bits & 0x00FF) as u8
-    }
-
-    fn nnn(&self) -> u16 {
-        // nnn = last 3 hex chars
-        self.bits & 0x0FFF
-    }
-
-    fn reg_x(&self) -> usize {
-        // reg_x = 2nd hex char
-        self.second() as usize
-    }
-
-    fn reg_y(&self) -> usize {
-        // reg_y = 3rd hex char
-        self.third() as usize
-    }
-}
+use chip8_const::*;
+use chip8_instr::Chip8Instr;
 
 pub struct Chip8 {
     // Each pixel can either be on/true (white) or off/false (black)
