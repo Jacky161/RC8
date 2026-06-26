@@ -5,6 +5,9 @@ mod chip8_instr;
 use chip8_const::*;
 use chip8_instr::Chip8Instr;
 
+use crate::chip8_font::FONTSET;
+use crate::chip8_font::FONTSET_SIZE;
+
 pub struct Chip8 {
     // Each pixel can either be on/true (white) or off/false (black)
     pub screen: [bool; SCREEN_WIDTH * SCREEN_HEIGHT],
@@ -31,7 +34,7 @@ pub struct Chip8 {
 impl Chip8 {
     // Constructor
     pub fn new() -> Self {
-        Self {
+        let mut c8 = Self {
             pc: PC_START_ADDR,
             v_reg: [0; NUM_REGS],
             i_reg: 0,
@@ -42,7 +45,12 @@ impl Chip8 {
             dt: 0,
             st: 0,
             keys: [false; NUM_KEYS],
-        }
+        };
+
+        // Copy fonts into RAM
+        c8.ram[..FONTSET_SIZE].copy_from_slice(&FONTSET);
+
+        c8
     }
 
     // Stack Methods
@@ -145,7 +153,8 @@ impl Chip8 {
     fn op_8xy4(&mut self, instr: Chip8Instr) {
         // VX = VX + VY
         // VF set to 1 on overflow
-        let (result, overflow) = self.v_reg[instr.reg_x()].overflowing_add(self.v_reg[instr.reg_y()]);
+        let (result, overflow) =
+            self.v_reg[instr.reg_x()].overflowing_add(self.v_reg[instr.reg_y()]);
 
         self.v_reg[instr.reg_x()] = result;
         self.v_reg[0xF] = if overflow { 1 } else { 0 };
@@ -155,7 +164,8 @@ impl Chip8 {
     fn op_8xy5(&mut self, instr: Chip8Instr) {
         // VX = VX - VY
         // VF set to 1 on overflow
-        let (result, overflow) = self.v_reg[instr.reg_x()].overflowing_sub(self.v_reg[instr.reg_y()]);
+        let (result, overflow) =
+            self.v_reg[instr.reg_x()].overflowing_sub(self.v_reg[instr.reg_y()]);
 
         self.v_reg[instr.reg_x()] = result;
         self.v_reg[0xF] = if overflow { 1 } else { 0 };
@@ -174,7 +184,8 @@ impl Chip8 {
     fn op_8xy7(&mut self, instr: Chip8Instr) {
         // VX = VY - VX
         // VF set to 1 on overflow
-        let (result, overflow) = self.v_reg[instr.reg_y()].overflowing_sub(self.v_reg[instr.reg_x()]);
+        let (result, overflow) =
+            self.v_reg[instr.reg_y()].overflowing_sub(self.v_reg[instr.reg_x()]);
 
         self.v_reg[instr.reg_x()] = result;
         self.v_reg[0xF] = if overflow { 1 } else { 0 };
